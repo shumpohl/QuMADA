@@ -56,6 +56,22 @@ class QumadaDevice:
         self.buffer_script_setup = {}
         self.states = {}
         self.ramp: bool = True
+        self.monitor_socket = None
+
+    def start_monitor_socket(self):
+        from qumada.utils.device_server import DeviceWebSocket, DataCollector
+
+        if self.monitor_socket is not None:
+            logger.info("Monitor socket already present. Restarting.")
+            self.monitor_socket.stop()
+        parameters = [param for parameters in self.terminal_parameters.values() for param in parameters.values()]
+
+        collector = DataCollector(*parameters)
+
+        if self.monitor_socket:
+            self.monitor_socket.join()
+        self.monitor_socket = DeviceWebSocket(collector)
+        self.monitor_socket.start()
 
     def add_terminal(self, terminal_name: str, type: str | None = None, terminal_data: dict | None = {}):
         if terminal_name not in self.terminals.keys():
@@ -1492,6 +1508,7 @@ class Terminal_Parameter(ABC):
                 self.ramp(value)
             else:
                 self.value = value
+
 
 
 # class Virtual_Terminal_Parameter(Terminal_Parameter):
