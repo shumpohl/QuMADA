@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import datetime
 import threading
 import time
@@ -9,7 +10,7 @@ import websockets
 from websockets.asyncio.server import ServerConnection
 
 from qcodes.instrument.parameter import Parameter
-
+from qumada.utils.geometry import gate_list_to_string
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +78,7 @@ class DeviceWebSocket(threading.Thread):
         self.port = port
 
         self.collector = collector
+        self.gate_geometry = None
 
         self._loop = None
         self._loop_control_future = threading.Event()
@@ -142,8 +144,12 @@ class DeviceWebSocket(threading.Thread):
             else:
                 raise NotImplementedError(f"Cannot serialize {o!r} of type {type(o)}")
 
+        send_geometry = None
         while True:
             data = await self.collector.get_data()
+
+            if self.gate_geometry is not None:
+                data["gate_geometry"] = gate_list_to_string(self.gate_geometry)
 
             serialized = json.dumps(data, default=default_to_json)
 
@@ -152,6 +158,8 @@ class DeviceWebSocket(threading.Thread):
             except websockets.exceptions.ConnectionClosed:
                 logger.debug("Connection closed")
                 break
+            else:
+                send_geometry = copy.deepcopy(self.gate_geometry)
 
             try:
                 await asyncio.sleep(self.collector.minimal_update_delta)
