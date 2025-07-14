@@ -1,47 +1,22 @@
-import dataclasses
-import pathlib
+import copy
 import re
-import sys
-from pathlib import Path
+import logging
 from typing import Tuple
-import math
-import random
-import json
 
-from matplotlib import pyplot as plt
-import matplotlib.widgets
-
-import numpy as np
-import shapely.geometry as sg
 import ezdxf.document
-import ezdxf.entities
-from ezdxf.addons.drawing import RenderContext, Frontend
-from ezdxf.addons.drawing.svg import SVGBackend
+import matplotlib.widgets
+from matplotlib import pyplot as plt
 from shapely.geometry import (
-    box, Polygon, LineString, Point, MultiLineString, MultiPolygon, GeometryCollection
+    MultiLineString
 )
-
-import ezdxf
-from ezdxf.addons.drawing import RenderContext, Frontend, layout, config
-from ezdxf.addons.drawing.svg import SVGBackend
-from ezdxf.addons.importer import Importer
 from shapely.geometry import box, Polygon, LineString
 from shapely.plotting import plot_polygon
-from shapely import wkt
 
+from qumada.utils.geometry import Gate
 
-
-DEFAULT_WINDOW = (-3., -1.5, 3., 1.5)
 SELECT_ALPHA = 0.3
 
-
-@dataclasses.dataclass
-class Gate:
-    polygon: Polygon
-    path: list[str]
-    layer: str
-    label: str | None
-    label_position: tuple[float, float]
+logger = logging.getLogger(__name__)
 
 
 def entity_to_geom(e):
@@ -148,8 +123,8 @@ def auto_merge(gates: list[Gate]):
         else:
             unconnected.append(gate)
 
-    print("Connected:", len(connected))
-    print("Unconnected:", len(unconnected))
+    logger.info("Connected: %d", len(connected))
+    logger.info("Unconnected: %d", len(unconnected))
 
     while unconnected:
         temp = []
@@ -166,21 +141,20 @@ def auto_merge(gates: list[Gate]):
                 break
             else:
                 temp.append(gate)
-        print(len(temp))
         if len(temp) == len(unconnected):
             break
         unconnected = temp
 
-    print("Unconnected after auto-merge:", len(unconnected))
+    logger.info("Unconnected after auto-merge: %d", len(unconnected))
     for u in unconnected:
-        print("Unconnected ",u.label ,"in layer", u.layer, u.polygon)
+        logger.debug("Unconnected %s in layer %r: %r", u.label, u.layer, u.polygon)
         u.label_position = u.polygon.centroid.x, u.polygon.centroid.y
 
     return connected + unconnected
 
 
 def label_gates(gates: list[Gate]) -> list[Gate]:
-    gates = list(gates)
+    gates = [copy.deepcopy(gate) for gate in gates]
 
     axd = plt.figure(layout="constrained").subplot_mosaic(
         """
@@ -239,7 +213,6 @@ def label_gates(gates: list[Gate]) -> list[Gate]:
     current_gate = 0
     select_gate(current_gate)
     def apply_action(*_):
-        print("apply", txt.text)
         gate = gates[current_gate]
         _, label_plot = plots[current_gate]
         gate.label = txt.text
@@ -247,7 +220,6 @@ def label_gates(gates: list[Gate]) -> list[Gate]:
         plt.draw()
 
     def prev_action(*_):
-        print("prev_action")
         nonlocal current_gate
         deselect_gate(current_gate)
         if current_gate == 0:
@@ -256,7 +228,6 @@ def label_gates(gates: list[Gate]) -> list[Gate]:
         select_gate(current_gate)
 
     def next_action(*_):
-        print("next_action")
         nonlocal current_gate
         deselect_gate(current_gate)
         current_gate += 1
@@ -284,40 +255,4 @@ def label_gates(gates: list[Gate]) -> list[Gate]:
     widgets = [prv, apply, nxt, txt]
     fig.widgets = widgets
 
-
-def gate_list_to_string(gates: list[Gate]) -> str:
-    def to_json(o):
-        if isinstance(o, Gate):
-            return dataclasses.asdict(o)
-        elif isinstance(o, Polygon):
-            return o.wkt
-        else:
-            return o
-    txt = json.dumps(gates, indent=2, default=to_json)
-    return txt
-
-def string_to_gate_list(txt: str) -> list[Gate]:
-    data = json.loads(txt)
-    assert isinstance(data, list)
-
-    gates = []
-    for d in data:
-        d["polygon"] = wkt.loads(d["polygon"])
-        d["label_position"] = tuple(d["label_position"])
-        gates.append(Gate(**d))
     return gates
-
-
-
-def store_to_file(gates: list[Gate], path: pathlib.Path):
-    path = pathlib.Path(path)
-    txt = gate_list_to_string(gates)
-    path.write_text(txt)
-
-
-    
-
-def load_from_file(path) -> list[Gate]:
-    path = pathlib.Path(path)
-    
-    
