@@ -8,5 +8,5 @@ p.add_argument("--host", default="127.0.0.1", help="Dash host to bind")
 p.add_argument("--port", default=8050, type=int, help="Dash port (default: 8050)")
 args = p.parse_args()
 
-app = make_app(args.ws, "Viridis")
+app = make_app(args.ws)
 app.run(host=args.host, port=args.port, debug=True)

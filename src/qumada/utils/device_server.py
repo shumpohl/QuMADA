@@ -83,6 +83,9 @@ class DeviceWebSocket(threading.Thread):
         self._loop = None
         self._loop_control_future = threading.Event()
 
+        #: data is re-sent after this time even if nothing changed
+        self.maximal_update_interval = 1.
+
     @property
     def address(self):
         return f"ws://{self.ip}:{self.port}"
@@ -144,7 +147,8 @@ class DeviceWebSocket(threading.Thread):
             else:
                 raise NotImplementedError(f"Cannot serialize {o!r} of type {type(o)}")
 
-        send_geometry = None
+        last_update = 0.0
+        last_message = None
         while True:
             data = await self.collector.get_data()
 
@@ -153,13 +157,15 @@ class DeviceWebSocket(threading.Thread):
 
             serialized = json.dumps(data, default=default_to_json)
 
-            try:
-                await connection.send(serialized)
-            except websockets.exceptions.ConnectionClosed:
-                logger.debug("Connection closed")
-                break
-            else:
-                send_geometry = copy.deepcopy(self.gate_geometry)
+            if serialized != last_message or time.time() - last_update > self.maximal_update_interval:
+                try:
+                    await connection.send(serialized)
+                except websockets.exceptions.ConnectionClosed:
+                    logger.debug("Connection closed")
+                    break
+                else:
+                    last_message = serialized
+                    last_update = time.time()
 
             try:
                 await asyncio.sleep(self.collector.minimal_update_delta)
